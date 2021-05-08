@@ -87,9 +87,9 @@ create you bootstrap add to `src/index.ts`
 
 ```bash
 
-npm i#或``sh install.sh``安装完整开发环境
+npm i #或``sh install.sh``安装完整开发环境
 
-sh make.sh#使用babel make生成javascript代码
+sh make.sh #使用babel make生成javascript代码
 
 ```
 
