@@ -24,6 +24,9 @@ export async function localTTYBootstrap(): Promise<void> {
         outStream: process.stdout,
         errStream: process.stderr,
     };
+    process.stdin.on("data",(e)=>{
+        loger.silly("in=> ",e);
+    });
     (async () => {
         const newLocal = true;
         while (newLocal) {
