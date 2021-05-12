@@ -149,6 +149,12 @@ const wsCommandRunSonState = {
                             );
                         }
                         break;
+                        ///
+                    case "\b":
+                        if(connState.inputCache.length==0){
+                            break;
+                        }
+                        break;
                     default:
                         {
                             connState.inputCache =
@@ -209,6 +215,7 @@ async function wsCommandRun(dataBox: networkBootstrapPackage, conn: ws) {
             });
             break;
         case CommandState.stop:
+            /// create new command
             wsCommandRunSonState.createNewCommandRunning({
                 connState: connState,
                 sendCommandRaw: sendCommandRaw,

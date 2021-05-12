@@ -22,9 +22,6 @@ interface networkBootstrapReturnDataPackageBase {}
  *
  */
 
-interface loginAuth extends networkBootstrapDataPackageBase {
-    passwd: string;
-}
 
 /**
 {
@@ -35,8 +32,9 @@ interface loginAuth extends networkBootstrapDataPackageBase {
 }
  */
 
-interface sendCommand extends networkBootstrapDataPackageBase {
-    command: string|Uint8Array;
+
+interface loginAuth extends networkBootstrapDataPackageBase {
+    passwd: string;
 }
 
 /**
@@ -47,6 +45,11 @@ interface sendCommand extends networkBootstrapDataPackageBase {
     }
 }
  */
+interface sendCommand extends networkBootstrapDataPackageBase {
+    command: string|Uint8Array;
+}
+
+
 
 
 /**
