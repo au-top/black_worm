@@ -18,8 +18,7 @@ import { loger } from "../log";
 import { writeToStream } from "../functions/streamUtil";
 import { buildTTYTips } from "../functions/ttyTips";
 
-
-/// global state 
+/// global state
 const wsServer = new ws.Server({ host: "0.0.0.0", port: 8086 });
 const globalConnectState = new Map<ws, NetworkSession>();
 const serverPasswd = "helloworld";
@@ -130,11 +129,35 @@ const wsCommandRunSonState = {
                         base64.toByteArray(sendCommandRaw.command as string)
                     )
                 );
+
                 //out to view
-                writeToStream(
-                    connState.uiStreamAgg.outStream,
-                    sendCommandRaw.command
-                );
+                if (sendCommandRaw.command == "\b") {
+                    if (connState.inputCache.length != 0) {
+                        const inputCacheList = connState.inputCache.split("");
+                        const notDElChatCount = inputCacheList.reduce(
+                            (acc, v) => {
+                                v != "\b" ? acc++ : null;
+                                return acc;
+                            },
+                            0
+                        );
+                        if (
+                            notDElChatCount >
+                            inputCacheList.length - notDElChatCount
+                        ) {
+                            writeToStream(
+                                connState.uiStreamAgg.outStream,
+                                sendCommandRaw.command
+                            );
+                        }
+                    }
+                } else {
+                    writeToStream(
+                        connState.uiStreamAgg.outStream,
+                        sendCommandRaw.command
+                    );
+                }
+
                 switch (sendCommandRaw.command) {
                     case "\n":
                         {
@@ -149,12 +172,26 @@ const wsCommandRunSonState = {
                             );
                         }
                         break;
-                        ///
                     case "\b":
-                        if(connState.inputCache.length==0){
-                            break;
+                        {
+                            const inputCacheList =
+                                connState.inputCache.split("");
+                            const notDElChatCount = inputCacheList.reduce(
+                                (acc, v) => {
+                                    v != "\b" ? acc++ : null;
+                                    return acc;
+                                },
+                                0
+                            );
+                            if (
+                                notDElChatCount >
+                                inputCacheList.length - notDElChatCount
+                            ) {
+                                connState.inputCache =
+                                connState.inputCache + sendCommandRaw.command;
+                            }
                         }
-                        break;
+                        return;
                     default:
                         {
                             connState.inputCache =
