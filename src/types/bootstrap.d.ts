@@ -3,3 +3,8 @@ export enum BootstrapMode{
     local,
     networkWs
 }
+
+export enum CommandState {
+    stop,
+    run,
+}

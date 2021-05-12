@@ -1,5 +1,5 @@
 import path from "path";
 
-export const _baseContext: CommandContext = {
+export const baseContextBuilder=():CommandContext=>({
     currentPath: path.resolve(__dirname),
-};
+});

@@ -1,22 +1,27 @@
 import readline from "readline";
 import ws from "ws";
+import base64 from "base64-js";
 import { Writable, Readable } from "stream";
 import { commandAnalysis } from "./core/commandExec";
 import { CommandAnalysisRes, UIStreamAgg } from "./types/commandRun.d";
 import { NetworkSession } from "./types/networkTTY/networkSession";
-import { _baseContext } from "./baseContext";
+import { baseContextBuilder } from "./baseContext";
 import { setBootstrapMode } from "./globalInfo";
-import { BootstrapMode } from "./types/bootstrap.d";
+import { BootstrapMode, CommandState } from "./types/bootstrap.d";
 import { sentenceAnalysis } from "./functions/commandAnalysis";
 import { loginAuthReqCode, sendCommandReqCode } from "./core/networtBootstrap";
+import { StringDecoder } from "string_decoder";
 import {
     buildNetworkResAuthPackage,
     buildNetworkViewPackage,
 } from "./functions/network/buildNetworkPackage";
 import { loger } from "./log";
+import { writeToStream } from "./functions/streamUtil";
+import { buildTTYTips } from "./functions/ttyTips";
 
 //本地终端引导
 export async function localTTYBootstrap(): Promise<void> {
+    const localTTYContext = baseContextBuilder();
     setBootstrapMode(BootstrapMode.local);
     const ttyIO = readline.createInterface(process.stdin, process.stdout);
     const uiStreamAgg: UIStreamAgg = {
@@ -24,22 +29,22 @@ export async function localTTYBootstrap(): Promise<void> {
         outStream: process.stdout,
         errStream: process.stderr,
     };
-    process.stdin.on("data",(e)=>{
-        loger.silly("in=> ",e);
+    process.stdin.on("data", (e) => {
+        loger.silly("in=> ", e);
     });
     (async () => {
         const newLocal = true;
         while (newLocal) {
             await new Promise((res) => {
                 ttyIO.question(
-                    `BlackWorm # ${_baseContext.currentPath} >`,
+                    buildTTYTips(localTTYContext),
                     async (inRead) => {
                         const commands = sentenceAnalysis(inRead);
                         let commandRes: CommandAnalysisRes | undefined;
                         for (const nextCommand of commands) {
                             commandRes = await commandAnalysis(
                                 nextCommand,
-                                _baseContext,
+                                localTTYContext,
                                 uiStreamAgg,
                                 commandRes
                             );
@@ -61,7 +66,6 @@ export async function networkWsTTYBootstrap(): Promise<void> {
     const wsServer = new ws.Server({ host: "0.0.0.0", port: 8086 });
     const globalConnectState = new Map<ws, NetworkSession>();
     const serverPasswd = "helloworld";
-
     const rebuildStream = (conn: ws): UIStreamAgg => {
         const outStreamElem = new Writable({
             write: (recvData, encode, callback) => {
@@ -112,18 +116,14 @@ export async function networkWsTTYBootstrap(): Promise<void> {
 
     wsServer.on("connection", (conn) => {
         let authState = false;
-        enum CommandState {
-            stop,
-            run,
-        }
-
         let commandState: CommandState = CommandState.stop;
-
+        let inputCache = "";
         conn.on("message", async (rawData) => {
             const rawString = rawData.toString();
             const dataBox: networkBootstrapPackage = JSON.parse(rawString);
             loger.silly(`${rawString}`);
             switch (dataBox.code) {
+                /// Login
                 case loginAuthReqCode:
                     {
                         const authPackage = dataBox.carry as loginAuth;
@@ -131,7 +131,7 @@ export async function networkWsTTYBootstrap(): Promise<void> {
                             authState = true;
                             globalConnectState.set(conn, {
                                 uiStreamAgg: rebuildStream(conn),
-                                context: Object.assign({}, _baseContext),
+                                context: baseContextBuilder(),
                             });
                             conn.send(
                                 JSON.stringify(buildNetworkResAuthPackage(true))
@@ -145,6 +145,7 @@ export async function networkWsTTYBootstrap(): Promise<void> {
                         }
                     }
                     break;
+                /// revc command main
                 case sendCommandReqCode:
                     {
                         if (!authState) {
@@ -152,20 +153,30 @@ export async function networkWsTTYBootstrap(): Promise<void> {
                             return;
                         }
                         const sendCommandRaw = dataBox.carry as sendCommand;
-
+                        const utf8decoder = new StringDecoder();
                         let commandRes: CommandAnalysisRes | undefined;
                         switch (commandState) {
                             case CommandState.run:
                                 {
-                                    const uiStreamAgg = globalConnectState.get(
-                                        conn
-                                    )!.uiStreamAgg;
+                                    sendCommandRaw.command = utf8decoder.end(
+                                        Buffer.from(
+                                            base64.toByteArray(
+                                                sendCommandRaw.command as string
+                                            ).buffer
+                                        )
+                                    );
+                                    const uiStreamAgg =
+                                        globalConnectState.get(
+                                            conn
+                                        )!.uiStreamAgg;
+                                    const pushLog = uiStreamAgg.inStream.push(
+                                        sendCommandRaw.command
+                                    );
+
                                     loger.debug(
-                                        `${
-                                            (uiStreamAgg.inStream.push(
-                                                sendCommandRaw.command
-                                            )+
-                                            " uiStreamAgg.inStream.push(sendCommandRaw.command)")
+                                        `revc ${sendCommandRaw.command} - ${
+                                            pushLog +
+                                            " uiStreamAgg.inStream.push(sendCommandRaw.command)"
                                         }`
                                     );
                                 }
@@ -173,28 +184,82 @@ export async function networkWsTTYBootstrap(): Promise<void> {
                             case CommandState.stop:
                                 {
                                     try {
-                                        const context: CommandContext = globalConnectState.get(
-                                            conn
-                                        )!.context;
-                                        const commandSentence = sentenceAnalysis(
-                                            sendCommandRaw.command
-                                        );
-                                        commandState = CommandState.run;
-                                        for (const nextCommand of commandSentence) {
-                                            const uiStreamAgg = globalConnectState.get(
-                                                conn
-                                            )!.uiStreamAgg;
-                                            await commandAnalysis(
-                                                nextCommand,
-                                                context,
-                                                uiStreamAgg,
-                                                commandRes
+                                        let runCommand = "";
+                                        {
+                                            sendCommandRaw.command =
+                                                utf8decoder.end(
+                                                    Buffer.from(
+                                                        base64.toByteArray(
+                                                            sendCommandRaw.command as string
+                                                        )
+                                                    )
+                                                );
+                                            //out to view
+                                            writeToStream(
+                                                globalConnectState.get(conn)!
+                                                    .uiStreamAgg.outStream,
+                                                sendCommandRaw.command
                                             );
-                                            rebuildStream(conn);
+                                            switch (sendCommandRaw.command) {
+                                                case "\n":
+                                                    {
+                                                        runCommand = inputCache;
+                                                        inputCache = "";
+                                                        loger.debug(
+                                                            ` inputCache-> ${inputCache} Code-> ${sendCommandRaw.command.charCodeAt(
+                                                                0
+                                                            )} `
+                                                        );
+                                                    }
+                                                    break;
+                                                default:
+                                                    {
+                                                        inputCache =
+                                                            inputCache +
+                                                            sendCommandRaw.command;
+                                                        loger.debug(
+                                                            `inputCache-> ${inputCache} Code-> ${sendCommandRaw.command.charCodeAt(
+                                                                0
+                                                            )}`
+                                                        );
+                                                    }
+                                                    return;
+                                            }
+                                        }
+                                        {
+                                            const context: CommandContext =
+                                                globalConnectState.get(
+                                                    conn
+                                                )!.context;
+                                            const commandSentence =
+                                                sentenceAnalysis(runCommand);
+                                            commandState = CommandState.run;
+                                            for (const nextCommand of commandSentence) {
+                                                const uiStreamAgg =
+                                                    globalConnectState.get(
+                                                        conn
+                                                    )!.uiStreamAgg;
+                                                await commandAnalysis(
+                                                    nextCommand,
+                                                    context,
+                                                    uiStreamAgg,
+                                                    commandRes
+                                                );
+                                                rebuildStream(conn);
+                                            }
+                                            writeToStream(
+                                                globalConnectState.get(conn)!
+                                                    .uiStreamAgg.outStream,
+                                                buildTTYTips(
+                                                    globalConnectState.get(
+                                                        conn
+                                                    )!.context
+                                                )
+                                            );
                                         }
                                         loger.silly("next command");
                                     } catch (e) {
-                                        loger.error(e)
+                                        loger.error(e);
                                     } finally {
                                         rebuildStream(conn);
                                         commandState = CommandState.stop;

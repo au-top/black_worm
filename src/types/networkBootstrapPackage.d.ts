@@ -29,14 +29,14 @@ interface loginAuth extends networkBootstrapDataPackageBase {
 /**
 {
 "code":100,
-"carry":{
-"passwd":"helloworld"
-}
+    "carry":{
+        "passwd":"helloworld"
+    }
 }
  */
 
 interface sendCommand extends networkBootstrapDataPackageBase {
-    command: string;
+    command: string|Uint8Array;
 }
 
 /**

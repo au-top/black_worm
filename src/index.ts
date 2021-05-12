@@ -6,6 +6,6 @@ import { localTTYBootstrap, networkWsTTYBootstrap } from "./bootstrap";
 import { BootstrapMode } from "./types/bootstrap.d";
 import { bootstrapMode , setBootstrapMode} from "./globalInfo";
 setBootstrapMode(BootstrapMode.none)
-// networkWsTTYBootstrap();
+networkWsTTYBootstrap();
 // use local
-localTTYBootstrap();
+// localTTYBootstrap();

@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@babel/runtime-corejs2": "^7.12.5",
+    "base64-js": "^1.5.1",
     "express": "^4.17.1",
     "winston": "^3.3.3",
     "ws": "^7.4.5"
